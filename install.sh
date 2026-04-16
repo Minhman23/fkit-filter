@@ -75,6 +75,32 @@ resolve_path() {
   echo "$p"
 }
 
+# Resolve actual filesystem case for each path component.
+# macOS is case-insensitive — user types "~/Dev/Fpt", real dir is "FPT".
+# Without this, CWD prefix matching could silently fail on case-sensitive
+# systems (Linux) or produce confusing mismatches in logs.
+resolve_case() {
+  local p="$1"
+  [[ ! -e "$p" ]] && { echo "$p"; return; }
+  python3 -c "
+import os, sys
+path = sys.argv[1]
+if not os.path.exists(path):
+    print(path); sys.exit()
+parts = path.split(os.sep)
+resolved = os.sep
+for part in parts[1:]:
+    if not part: continue
+    try:
+        entries = os.listdir(resolved)
+        matched = next((e for e in entries if e.lower() == part.lower()), part)
+        resolved = os.path.join(resolved, matched)
+    except OSError:
+        resolved = os.path.join(resolved, part)
+print(resolved)
+" "$p" 2>/dev/null || echo "$p"
+}
+
 # ── Paths management ────────────────────────────────────────────────────────
 # PATHS array holds allowed CWD prefixes.
 # Only events from directories matching these prefixes are reported to FKit.
@@ -124,8 +150,14 @@ add_path() {
   echo -ne "  > "
   read -r raw
   [[ -z "$raw" ]] && return
-  local resolved
+  local resolved corrected
   resolved=$(resolve_path "$raw")
+  # Auto-correct case to match actual filesystem (e.g. "Fpt" → "FPT")
+  corrected=$(resolve_case "$resolved")
+  if [[ "$corrected" != "$resolved" ]] && [[ -d "$corrected" ]]; then
+    info "Case corrected: ${resolved} → ${corrected}"
+    resolved="$corrected"
+  fi
   for p in "${PATHS[@]+"${PATHS[@]}"}"; do
     [[ "$p" == "$resolved" ]] && { warn "Already added: $resolved"; return; }
   done
