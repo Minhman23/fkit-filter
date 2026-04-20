@@ -789,8 +789,10 @@ def review(reporter_path, filter_path):
 
     # Metadata-only files — contain a PID, timestamp, or number, NOT events.
     # These can never leak personal session data.
+    # "-updated" covers $HOME/.fkit-reporter-updated (version marker written
+    # by reporter v25+ after background self-update; contains version int only).
     metadata_keywords = {
-        "flush.lock", "lastflush", ".backoff", ".lock", ".pid",
+        "flush.lock", "lastflush", ".backoff", ".lock", ".pid", "-updated",
     }
 
     def is_covered(path):
